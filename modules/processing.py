@@ -109,7 +109,40 @@ class StableDiffusionProcessing:
     cached_uc = [None, None]
     cached_c = [None, None]
 
-    def __init__(self, sd_model=None, outpath_samples=None, outpath_grids=None, prompt: str = "", styles: List[str] = None, seed: int = -1, subseed: int = -1, subseed_strength: float = 0, seed_resize_from_h: int = -1, seed_resize_from_w: int = -1, seed_enable_extras: bool = True, sampler_name: str = None, batch_size: int = 1, n_iter: int = 1, steps: int = 50, cfg_scale: float = 7.0, width: int = 512, height: int = 512, restore_faces: bool = False, tiling: bool = False, do_not_save_samples: bool = False, do_not_save_grid: bool = False, extra_generation_params: Dict[Any, Any] = None, overlay_images: Any = None, negative_prompt: str = None, eta: float = None, do_not_reload_embeddings: bool = False, denoising_strength: float = 0, ddim_discretize: str = None, s_min_uncond: float = 0.0, s_churn: float = 0.0, s_tmax: float = None, s_tmin: float = 0.0, s_noise: float = 1.0, override_settings: Dict[str, Any] = None, override_settings_restore_afterwards: bool = True, sampler_index: int = None, script_args: list = None):
+    def __init__(self, sd_model=None, 
+                       outpath_samples=None, 
+                       outpath_grids=None, 
+                       prompt: str = "", styles: List[str] = None, 
+                       seed: int = -1, 
+                       subseed: int = -1, 
+                       subseed_strength: float = 0, 
+                       seed_resize_from_h: int = -1, 
+                       seed_resize_from_w: int = -1, 
+                       seed_enable_extras: bool = True, 
+                       sampler_name: str = None, 
+                       batch_size: int = 1, 
+                       n_iter: int = 1, 
+                       steps: int = 50, 
+                       cfg_scale: float = 7.0, 
+                       width: int = 512, 
+                       height: int = 512, 
+                       restore_faces: bool = False, 
+                       tiling: bool = False,
+                       do_not_save_samples: bool = False, 
+                       do_not_save_grid: bool = False, 
+                       extra_generation_params: Dict[Any, Any] = None, 
+                       overlay_images: Any = None, 
+                       negative_prompt: str = None, 
+                       eta: float = None, 
+                       do_not_reload_embeddings: bool = False, 
+                       denoising_strength: float = 0, 
+                       ddim_discretize: str = None, 
+                       s_min_uncond: float = 0.0, 
+                       s_churn: float = 0.0, 
+                       s_tmax: float = None, s_tmin: float = 0.0, s_noise: float = 1.0, 
+                       override_settings: Dict[str, Any] = None, 
+                       override_settings_restore_afterwards: bool = True, 
+                       sampler_index: int = None, script_args: list = None):
         if sampler_index is not None:
             print("sampler_index argument for StableDiffusionProcessing does not do anything; use sampler_name", file=sys.stderr)
 
@@ -286,6 +319,7 @@ class StableDiffusionProcessing:
         pass
 
     def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
+        ## 交给各种processing子类实现
         raise NotImplementedError()
 
     def close(self):
@@ -688,7 +722,7 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
         if state.job_count == -1:
             state.job_count = p.n_iter
 
-        for n in range(p.n_iter):
+        for n in range(p.n_iter): ## n_iter is not sampling steps
             p.iteration = n
 
             if state.skipped:
@@ -736,7 +770,12 @@ def process_images_inner(p: StableDiffusionProcessing) -> Processed:
                 shared.state.job = f"Batch {n+1} out of {p.n_iter}"
 
             with devices.without_autocast() if devices.unet_needs_upcast else devices.autocast():
-                samples_ddim = p.sample(conditioning=p.c, unconditional_conditioning=p.uc, seeds=p.seeds, subseeds=p.subseeds, subseed_strength=p.subseed_strength, prompts=p.prompts)
+                samples_ddim = p.sample(conditioning=p.c, 
+                                        unconditional_conditioning=p.uc, 
+                                        seeds=p.seeds, 
+                                        subseeds=p.subseeds, 
+                                        subseed_strength=p.subseed_strength, 
+                                        prompts=p.prompts)
 
             x_samples_ddim = [decode_first_stage(p.sd_model, samples_ddim[i:i+1].to(dtype=devices.dtype_vae))[0].cpu() for i in range(samples_ddim.size(0))]
             for x in x_samples_ddim:
@@ -981,6 +1020,10 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
                 self.extra_generation_params["Hires upscaler"] = self.hr_upscaler
 
     def sample(self, conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength, prompts):
+        """
+        conditioning:
+        unconditional_conditioning:
+        """
         self.sampler = sd_samplers.create_sampler(self.sampler_name, self.sd_model)
 
         latent_scale_mode = shared.latent_upscale_modes.get(self.hr_upscaler, None) if self.hr_upscaler is not None else shared.latent_upscale_modes.get(shared.latent_upscale_default_mode, "nearest")
@@ -1155,8 +1198,26 @@ class StableDiffusionProcessingTxt2Img(StableDiffusionProcessing):
 
 class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
     sampler = None
+    """
+    denoising_strength: 仅作为instance的一个参数, 但是实际使用是在
+    sd_samplers_common.py里的setup_img2img_steps(), 接受一个StableDiffusionProcessing
+    instance作为输入, 并且将denoising_strength作为参数调整final steps.
 
-    def __init__(self, init_images: list = None, resize_mode: int = 0, denoising_strength: float = 0.75, image_cfg_scale: float = None, mask: Any = None, mask_blur: int = None, mask_blur_x: int = 4, mask_blur_y: int = 4, inpainting_fill: int = 0, inpaint_full_res: bool = True, inpaint_full_res_padding: int = 0, inpainting_mask_invert: int = 0, initial_noise_multiplier: float = None, **kwargs):
+    """
+    def __init__(self, init_images: list = None, 
+                       resize_mode: int = 0, 
+                       denoising_strength: float = 0.75, 
+                       image_cfg_scale: float = None, 
+                       mask: Any = None, 
+                       mask_blur: int = None, 
+                       mask_blur_x: int = 4, 
+                       mask_blur_y: int = 4, 
+                       inpainting_fill: int = 0, 
+                       inpaint_full_res: bool = True, 
+                       inpaint_full_res_padding: int = 0, 
+                       inpainting_mask_invert: int = 0, 
+                       initial_noise_multiplier: float = None, 
+                       **kwargs):
         super().__init__(**kwargs)
 
         self.init_images = init_images
@@ -1281,7 +1342,8 @@ class StableDiffusionProcessingImg2Img(StableDiffusionProcessing):
         image = torch.from_numpy(batch_images)
         image = 2. * image - 1.
         image = image.to(shared.device)
-
+        ## 注意这里, 可以认为init_latent就是vae encode之后得到的latent
+        ## 如果想要快速验证, 可以考虑在diffusers里试一下这个流程: image => encoder => noise => denoise => decoder => image'
         self.init_latent = self.sd_model.get_first_stage_encoding(self.sd_model.encode_first_stage(image))
 
         if self.resize_mode == 3:

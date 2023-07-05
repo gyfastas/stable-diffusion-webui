@@ -248,11 +248,16 @@ def load_scripts():
     syspath = sys.path
 
     def register_scripts_from_module(module):
+        """
+        这里很容易理解, 就是找到module里的Script子类, 注册到
+        scripts_data这个list里, 每个元素是一个
+        ScriptClassData, 包含了它的类对象以及其他信息
+        """
         for script_class in module.__dict__.values():
             if type(script_class) != type:
                 continue
 
-            if issubclass(script_class, Script):
+            if issubclass(script_class, Script): #
                 scripts_data.append(ScriptClassData(script_class, scriptfile.path, scriptfile.basedir, module))
             elif issubclass(script_class, scripts_postprocessing.ScriptPostprocessing):
                 postprocessing_scripts_data.append(ScriptClassData(script_class, scriptfile.path, scriptfile.basedir, module))

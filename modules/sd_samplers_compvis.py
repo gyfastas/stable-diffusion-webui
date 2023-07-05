@@ -181,6 +181,7 @@ class VanillaStableDiffusionSampler:
         self.initialize(p)
 
         self.sampler.make_schedule(ddim_num_steps=steps, ddim_eta=self.eta, ddim_discretize=p.ddim_discretize, verbose=False)
+        ## [TODO] stochastic_encode(x) 会
         x1 = self.sampler.stochastic_encode(x, torch.tensor([t_enc] * int(x.shape[0])).to(shared.device), noise=noise)
 
         self.init_latent = x
